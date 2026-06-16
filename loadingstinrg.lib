@@ -1,0 +1,715 @@
+--[[
+    GameSelector.lua
+    Fully functional game selector with your exact config
+    
+    Usage:
+    local GameSelector = require(path.to.GameSelector)
+    
+    local selector = GameSelector.new({
+        Parent = screenGui,
+        LogoId = "rbxassetid://93352692321785",
+        AccentColor = Color3.fromRGB(255, 60, 80),
+    })
+--]]
+
+local GameSelector = {}
+GameSelector.__index = GameSelector
+
+-- ─── SERVICES ───
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local MarketplaceService = game:GetService("MarketplaceService")
+
+-- ─── YOUR CONFIG ───
+local ACCENT = Color3.fromRGB(255, 60, 80)
+
+local GAME_PLACE_IDS = {
+    ThaBronx3 = 16472538603,
+    PhillyStreetz2 = 130700367963690,
+    CentralStreets = 121567535120062,
+}
+
+local GAME_NAMES = {
+    ThaBronx3 = "THA BRONX 3",
+    PhillyStreetz2 = "PHILLY STREETZ 2",
+    CentralStreets = "CENTRAL STREETS",
+}
+
+local GAME_SCRIPTS = {
+    ThaBronx3 = function()
+        print("Loading ThaBronx3 script...")
+        task.wait(2)
+        print("ThaBronx3 script loaded!")
+        -- Your Bronx script here
+    end,
+    PhillyStreetz2 = function()
+        print("Loading PhillyStreetz2 script...")
+        task.wait(2)
+        print("PhillyStreetz2 script loaded!")
+        -- Your Philly script here
+    end,
+    CentralStreets = function()
+        print("Loading CentralStreets script...")
+        task.wait(2)
+        print("CentralStreets script loaded!")
+        -- Your Central script here
+    end,
+}
+
+-- ─── GAME LIST ───
+local GAMES = {
+    ThaBronx3 = {
+        Key = "ThaBronx3",
+        Name = "THA BRONX 3",
+        PlaceId = 16472538603,
+        Color = Color3.fromRGB(200, 50, 50),
+        Script = GAME_SCRIPTS.ThaBronx3,
+    },
+    PhillyStreetz2 = {
+        Key = "PhillyStreetz2",
+        Name = "PHILLY STREETZ 2",
+        PlaceId = 130700367963690,
+        Color = Color3.fromRGB(50, 150, 200),
+        Script = GAME_SCRIPTS.PhillyStreetz2,
+    },
+    CentralStreets = {
+        Key = "CentralStreets",
+        Name = "CENTRAL STREETS",
+        PlaceId = 121567535120062,
+        Color = Color3.fromRGB(50, 200, 100),
+        Script = GAME_SCRIPTS.CentralStreets,
+    },
+}
+
+-- ─── HELPERS ───
+local function createRoundedFrame(parent, size, position, color, transparency, cornerRadius)
+    local frame = Instance.new("Frame")
+    frame.Size = size
+    frame.Position = position
+    frame.BackgroundColor3 = color or Color3.fromRGB(255, 255, 255)
+    frame.BackgroundTransparency = transparency or 0
+    frame.BorderSizePixel = 0
+    frame.Parent = parent
+    
+    if cornerRadius and cornerRadius > 0 then
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, cornerRadius)
+        corner.Parent = frame
+    end
+    
+    return frame
+end
+
+local function createTextLabel(parent, size, position, text, color, sizePx, font, alignX, alignY, transparency)
+    local label = Instance.new("TextLabel")
+    label.Size = size
+    label.Position = position
+    label.BackgroundTransparency = transparency or 1
+    label.Text = text or ""
+    label.TextColor3 = color or Color3.fromRGB(255, 255, 255)
+    label.TextSize = sizePx or 14
+    label.Font = font or Enum.Font.SourceSansBold
+    label.TextXAlignment = alignX or Enum.TextXAlignment.Center
+    label.TextYAlignment = alignY or Enum.TextYAlignment.Center
+    label.Parent = parent
+    return label
+end
+
+local function createImageLabel(parent, size, position, imageId, transparency)
+    local image = Instance.new("ImageLabel")
+    image.Size = size
+    image.Position = position
+    image.BackgroundTransparency = 1
+    image.Image = imageId or ""
+    image.ImageTransparency = transparency or 0
+    image.ScaleType = Enum.ScaleType.Fit
+    image.Parent = parent
+    return image
+end
+
+local function createButton(parent, size, position, text, color, textColor, cornerRadius, textSize)
+    local btn = Instance.new("TextButton")
+    btn.Size = size
+    btn.Position = position
+    btn.BackgroundColor3 = color or Color3.fromRGB(40, 40, 40)
+    btn.Text = text or ""
+    btn.TextColor3 = textColor or Color3.fromRGB(255, 255, 255)
+    btn.TextSize = textSize or 14
+    btn.Font = Enum.Font.SourceSansBold
+    btn.BorderSizePixel = 0
+    btn.Parent = parent
+    btn.AutoButtonColor = false
+    
+    if cornerRadius and cornerRadius > 0 then
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, cornerRadius)
+        corner.Parent = btn
+    end
+    
+    return btn
+end
+
+-- ─── MAIN CLASS ───
+function GameSelector.new(config)
+    config = config or {}
+    
+    local self = setmetatable({}, GameSelector)
+    
+    -- ─── CONFIG ───
+    self.Parent = config.Parent or Players.LocalPlayer.PlayerGui
+    self.Position = config.Position or UDim2.new(0.5, -300, 0.5, -240)
+    self.Size = config.Size or UDim2.new(0, 600, 0, 480)
+    self.LogoId = config.LogoId or "rbxassetid://93352692321785"
+    self.AccentColor = config.AccentColor or ACCENT
+    self.OnGameSelected = config.OnGameSelected or function(gameKey) end
+    self.OnLoadScript = config.OnLoadScript or function(gameKey) end
+    self.OnJoin = config.OnJoin or function(gameKey) end
+    
+    -- ─── STATE ───
+    self.SelectedGame = nil
+    self.CurrentGame = nil
+    self.IsLoading = false
+    
+    -- ─── DETECT CURRENT GAME ───
+    self:_detectCurrentGame()
+    
+    -- ─── BUILD UI ───
+    self:_buildUI()
+    
+    -- ─── UPDATE UI WITH CURRENT GAME ───
+    self:_updateForCurrentGame()
+    
+    return self
+end
+
+-- ─── DETECT CURRENT GAME ───
+function GameSelector:_detectCurrentGame()
+    local placeId = game.PlaceId
+    
+    for key, id in pairs(GAME_PLACE_IDS) do
+        if id == placeId then
+            self.CurrentGame = key
+            return
+        end
+    end
+    
+    -- If not matched, try by game name
+    local gameName = MarketplaceService:GetProductInfo(placeId).Name or ""
+    for key, name in pairs(GAME_NAMES) do
+        if string.find(string.upper(gameName), string.upper(name)) or string.find(string.upper(gameName), string.upper(key)) then
+            self.CurrentGame = key
+            return
+        end
+    end
+    
+    -- Default to first game
+    self.CurrentGame = "ThaBronx3"
+end
+
+-- ─── UPDATE FOR CURRENT GAME ───
+function GameSelector:_updateForCurrentGame()
+    if not self.CurrentGame then return end
+    
+    local gameData = GAMES[self.CurrentGame]
+    if not gameData then return end
+    
+    -- Update title
+    if self.TitleLabel then
+        self.TitleLabel.Text = gameData.Name
+        self.TitleLabel.TextColor3 = gameData.Color
+    end
+    
+    -- Update detected text
+    if self.DetectedLabel then
+        self.DetectedLabel.Text = "DETECTED: " .. gameData.Name
+        self.DetectedLabel.TextColor3 = gameData.Color
+    end
+    
+    -- Auto-select current game in buttons
+    for i, btn in ipairs(self.GameButtons or {}) do
+        if btn._GameKey == self.CurrentGame then
+            self:SelectGame(i)
+            break
+        end
+    end
+end
+
+-- ─── BUILD UI ───
+function GameSelector:_buildUI()
+    -- ─── MAIN CONTAINER ───
+    local main = createRoundedFrame(
+        self.Parent,
+        self.Size,
+        self.Position,
+        Color3.fromRGB(18, 16, 20),
+        0,
+        14
+    )
+    main.BorderSizePixel = 2
+    main.BorderColor3 = Color3.fromRGB(60, 55, 65)
+    self.Main = main
+    
+    -- subtle inner glow
+    local innerGlow = createRoundedFrame(
+        main,
+        UDim2.new(1, -4, 1, -4),
+        UDim2.new(0, 2, 0, 2),
+        Color3.fromRGB(40, 35, 45),
+        0.25,
+        12
+    )
+    self.InnerGlow = innerGlow
+    
+    -- ─── LOGO ───
+    local logo = createImageLabel(
+        main,
+        UDim2.new(0, 80, 0, 80),
+        UDim2.new(0.5, -40, 0, 10),
+        self.LogoId,
+        0
+    )
+    self.Logo = logo
+    
+    -- ─── HEADER: "DETECTED" ───
+    local detectedLabel = createTextLabel(
+        main,
+        UDim2.new(1, 0, 0, 30),
+        UDim2.new(0, 0, 0, 95),
+        "DETECTED: " .. (self.CurrentGame and GAMES[self.CurrentGame].Name or "UNKNOWN"),
+        self.AccentColor,
+        14,
+        Enum.Font.SourceSansBold,
+        Enum.TextXAlignment.Center,
+        Enum.TextYAlignment.Center,
+        0.85
+    )
+    self.DetectedLabel = detectedLabel
+    
+    -- ─── GAME TITLE ───
+    local currentData = GAMES[self.CurrentGame] or GAMES["ThaBronx3"]
+    local titleLabel = createTextLabel(
+        main,
+        UDim2.new(1, 0, 0, 45),
+        UDim2.new(0, 0, 0, 125),
+        currentData.Name,
+        currentData.Color,
+        30,
+        Enum.Font.SourceSansBold
+    )
+    self.TitleLabel = titleLabel
+    
+    -- ─── "GAMESELECTOR" ───
+    local selectorLabel = createTextLabel(
+        main,
+        UDim2.new(1, 0, 0, 25),
+        UDim2.new(0, 0, 0, 168),
+        "GAMESELECTOR",
+        Color3.fromRGB(120, 120, 140),
+        11,
+        Enum.Font.SourceSans,
+        Enum.TextXAlignment.Center,
+        Enum.TextYAlignment.Center,
+        0.7
+    )
+    self.SelectorLabel = selectorLabel
+    
+    -- divider line
+    local divider = Instance.new("Frame")
+    divider.Size = UDim2.new(0.8, 0, 0, 1)
+    divider.Position = UDim2.new(0.1, 0, 0, 192)
+    divider.BackgroundColor3 = Color3.fromRGB(60, 55, 65)
+    divider.Parent = main
+    self.Divider = divider
+    
+    -- ─── "choose your experience" ───
+    local subtitleLabel = createTextLabel(
+        main,
+        UDim2.new(1, 0, 0, 20),
+        UDim2.new(0, 0, 0, 202),
+        "choose your experience",
+        Color3.fromRGB(180, 180, 200),
+        10,
+        Enum.Font.SourceSans,
+        Enum.TextXAlignment.Center,
+        Enum.TextYAlignment.Center,
+        0.6
+    )
+    self.SubtitleLabel = subtitleLabel
+    
+    -- ─── GAME BUTTONS ───
+    local gameButtons = {}
+    local buttonHeight = 38
+    local buttonSpacing = 8
+    local startY = 235
+    
+    -- Game order
+    local gameOrder = {"ThaBronx3", "PhillyStreetz2", "CentralStreets"}
+    
+    for i, key in ipairs(gameOrder) do
+        local gameData = GAMES[key]
+        if gameData then
+            local yPos = startY + (i - 1) * (buttonHeight + buttonSpacing)
+            local isCurrent = (key == self.CurrentGame)
+            
+            -- button background
+            local btn = createButton(
+                main,
+                UDim2.new(0.8, 0, 0, buttonHeight),
+                UDim2.new(0.1, 0, 0, yPos),
+                gameData.Name,
+                isCurrent and gameData.Color or Color3.fromRGB(35, 33, 38),
+                isCurrent and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(220, 220, 240),
+                6,
+                15
+            )
+            btn.BorderSizePixel = 1
+            btn.BorderColor3 = isCurrent and gameData.Color or Color3.fromRGB(50, 45, 55)
+            btn._GameKey = key
+            btn._GameData = gameData
+            
+            -- highlight if current
+            if isCurrent then
+                btn.BackgroundColor3 = gameData.Color
+                btn.BackgroundTransparency = 0.3
+            end
+            
+            -- hover effect
+            btn.MouseEnter:Connect(function()
+                if not isCurrent and not self.IsLoading then
+                    TweenService:Create(btn, TweenInfo.new(0.15), {
+                        BackgroundColor3 = Color3.fromRGB(50, 45, 55)
+                    }):Play()
+                end
+            end)
+            
+            btn.MouseLeave:Connect(function()
+                if not isCurrent and not self.IsLoading then
+                    TweenService:Create(btn, TweenInfo.new(0.15), {
+                        BackgroundColor3 = Color3.fromRGB(35, 33, 38)
+                    }):Play()
+                end
+            end)
+            
+            btn.MouseButton1Click:Connect(function()
+                if not self.IsLoading then
+                    self:SelectGame(i)
+                end
+            end)
+            
+            table.insert(gameButtons, btn)
+        end
+    end
+    self.GameButtons = gameButtons
+    
+    -- ─── ACTION BUTTONS ───
+    local actionY = startY + #gameOrder * (buttonHeight + buttonSpacing) + 14
+    
+    -- "CLICK TO LOAD SCRIPT" (left)
+    local loadBtn = createButton(
+        main,
+        UDim2.new(0.32, 0, 0, 34),
+        UDim2.new(0.06, 0, 0, actionY),
+        "CLICK TO LOAD SCRIPT",
+        Color3.fromRGB(60, 55, 70),
+        Color3.fromRGB(200, 200, 220),
+        6,
+        10
+    )
+    loadBtn.BorderSizePixel = 1
+    loadBtn.BorderColor3 = Color3.fromRGB(80, 75, 90)
+    
+    loadBtn.MouseEnter:Connect(function()
+        if not self.IsLoading then
+            TweenService:Create(loadBtn, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(80, 75, 90)
+            }):Play()
+        end
+    end)
+    
+    loadBtn.MouseLeave:Connect(function()
+        if not self.IsLoading then
+            TweenService:Create(loadBtn, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(60, 55, 70)
+            }):Play()
+        end
+    end)
+    
+    loadBtn.MouseButton1Click:Connect(function()
+        self:_handleLoadScript()
+    end)
+    self.LoadButton = loadBtn
+    
+    -- "CLICK TO JOIN & LOAD" (center)
+    local joinBtn = createButton(
+        main,
+        UDim2.new(0.32, 0, 0, 34),
+        UDim2.new(0.34, 0, 0, actionY),
+        "CLICK TO JOIN & LOAD",
+        Color3.fromRGB(40, 70, 100),
+        Color3.fromRGB(220, 235, 255),
+        6,
+        10
+    )
+    joinBtn.BorderSizePixel = 1
+    joinBtn.BorderColor3 = Color3.fromRGB(60, 100, 140)
+    
+    joinBtn.MouseEnter:Connect(function()
+        if not self.IsLoading then
+            TweenService:Create(joinBtn, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(50, 90, 130)
+            }):Play()
+        end
+    end)
+    
+    joinBtn.MouseLeave:Connect(function()
+        if not self.IsLoading then
+            TweenService:Create(joinBtn, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(40, 70, 100)
+            }):Play()
+        end
+    end)
+    
+    joinBtn.MouseButton1Click:Connect(function()
+        self:_handleJoin()
+    end)
+    self.JoinButton = joinBtn
+    
+    -- "CLICK TO JOIN & LOAD" (right)
+    local joinBtn2 = createButton(
+        main,
+        UDim2.new(0.32, 0, 0, 34),
+        UDim2.new(0.62, 0, 0, actionY),
+        "CLICK TO JOIN & LOAD",
+        Color3.fromRGB(40, 70, 100),
+        Color3.fromRGB(220, 235, 255),
+        6,
+        10
+    )
+    joinBtn2.BorderSizePixel = 1
+    joinBtn2.BorderColor3 = Color3.fromRGB(60, 100, 140)
+    
+    joinBtn2.MouseEnter:Connect(function()
+        if not self.IsLoading then
+            TweenService:Create(joinBtn2, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(50, 90, 130)
+            }):Play()
+        end
+    end)
+    
+    joinBtn2.MouseLeave:Connect(function()
+        if not self.IsLoading then
+            TweenService:Create(joinBtn2, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(40, 70, 100)
+            }):Play()
+        end
+    end)
+    
+    joinBtn2.MouseButton1Click:Connect(function()
+        self:_handleJoin()
+    end)
+    self.JoinButton2 = joinBtn2
+    
+    -- ─── STATUS BAR ───
+    local statusLabel = createTextLabel(
+        main,
+        UDim2.new(1, -40, 0, 24),
+        UDim2.new(0, 20, 0, self.Size.Y.Offset - 30),
+        "Select a game to begin",
+        Color3.fromRGB(120, 120, 140),
+        11,
+        Enum.Font.SourceSans,
+        Enum.TextXAlignment.Center,
+        Enum.TextYAlignment.Center,
+        0.6
+    )
+    self.StatusLabel = statusLabel
+end
+
+-- ─── HANDLE LOAD SCRIPT ───
+function GameSelector:_handleLoadScript()
+    if self.IsLoading then return end
+    
+    local gameKey = self.SelectedGame or self.CurrentGame
+    if not gameKey then
+        self:_setStatus("No game selected!", Color3.fromRGB(255, 70, 70))
+        return
+    end
+    
+    local gameData = GAMES[gameKey]
+    if not gameData then return end
+    
+    self.IsLoading = true
+    self:_setStatus("Loading " .. gameData.Name .. " script...", gameData.Color)
+    
+    -- Disable buttons
+    self:_setButtonsEnabled(false)
+    
+    -- Call the load script callback
+    self.OnLoadScript(gameKey)
+    
+    -- Run the actual script
+    if gameData.Script then
+        task.spawn(function()
+            gameData.Script()
+            self:_setStatus("✓ " .. gameData.Name .. " script loaded!", Color3.fromRGB(50, 200, 100))
+            self.IsLoading = false
+            self:_setButtonsEnabled(true)
+        end)
+    else
+        task.wait(1)
+        self:_setStatus("✓ Script loaded!", Color3.fromRGB(50, 200, 100))
+        self.IsLoading = false
+        self:_setButtonsEnabled(true)
+    end
+end
+
+-- ─── HANDLE JOIN ───
+function GameSelector:_handleJoin()
+    if self.IsLoading then return end
+    
+    local gameKey = self.SelectedGame or self.CurrentGame
+    if not gameKey then
+        self:_setStatus("No game selected!", Color3.fromRGB(255, 70, 70))
+        return
+    end
+    
+    local gameData = GAMES[gameKey]
+    if not gameData then return end
+    
+    -- Check if already in this game
+    if gameKey == self.CurrentGame then
+        self:_setStatus("Already in " .. gameData.Name .. "!", Color3.fromRGB(255, 200, 50))
+        return
+    end
+    
+    self.IsLoading = true
+    self:_setStatus("Joining " .. gameData.Name .. "...", gameData.Color)
+    self:_setButtonsEnabled(false)
+    
+    -- Call the join callback
+    self.OnJoin(gameKey)
+    
+    -- Teleport to the selected game
+    self:_teleportToGame(gameKey)
+end
+
+-- ─── TELEPORT TO GAME ───
+function GameSelector:_teleportToGame(gameKey)
+    local gameData = GAMES[gameKey]
+    if not gameData then return end
+    
+    print("Teleporting to:", gameData.Name, "PlaceId:", gameData.PlaceId)
+    
+    -- Teleport using TeleportService
+    local success, err = pcall(function()
+        TeleportService:Teleport(gameData.PlaceId, Players.LocalPlayer)
+    end)
+    
+    if not success then
+        self:_setStatus("Failed to teleport!", Color3.fromRGB(255, 70, 70))
+        self.IsLoading = false
+        self:_setButtonsEnabled(true)
+    end
+end
+
+-- ─── SET STATUS ───
+function GameSelector:_setStatus(message, color)
+    if self.StatusLabel then
+        self.StatusLabel.Text = message
+        self.StatusLabel.TextColor3 = color or Color3.fromRGB(200, 200, 200)
+    end
+end
+
+-- ─── SET BUTTONS ENABLED ───
+function GameSelector:_setButtonsEnabled(enabled)
+    local transparency = enabled and 0 or 0.5
+    
+    -- Game buttons
+    for _, btn in ipairs(self.GameButtons or {}) do
+        btn.TextTransparency = transparency
+        btn.BackgroundTransparency = enabled and (btn._GameKey == self.CurrentGame and 0.3 or 0) or 0.5
+    end
+    
+    -- Action buttons
+    if self.LoadButton then
+        self.LoadButton.TextTransparency = transparency
+        self.LoadButton.BackgroundTransparency = enabled and 0 or 0.5
+    end
+    if self.JoinButton then
+        self.JoinButton.TextTransparency = transparency
+        self.JoinButton.BackgroundTransparency = enabled and 0 or 0.5
+    end
+    if self.JoinButton2 then
+        self.JoinButton2.TextTransparency = transparency
+        self.JoinButton2.BackgroundTransparency = enabled and 0 or 0.5
+    end
+end
+
+-- ─── SELECT GAME ───
+function GameSelector:SelectGame(index)
+    if self.IsLoading then return end
+    
+    local btn = self.GameButtons and self.GameButtons[index]
+    if not btn then return end
+    
+    local gameKey = btn._GameKey
+    local gameData = GAMES[gameKey]
+    if not gameData then return end
+    
+    self.SelectedGame = gameKey
+    
+    -- Update UI
+    for i, b in ipairs(self.GameButtons) do
+        if b._GameKey == gameKey then
+            b.BackgroundColor3 = gameData.Color
+            b.BackgroundTransparency = 0.3
+            b.BorderColor3 = gameData.Color
+            b.TextColor3 = Color3.fromRGB(255, 255, 255)
+        else
+            b.BackgroundColor3 = Color3.fromRGB(35, 33, 38)
+            b.BackgroundTransparency = 0
+            b.BorderColor3 = Color3.fromRGB(50, 45, 55)
+            b.TextColor3 = Color3.fromRGB(220, 220, 240)
+        end
+    end
+    
+    -- Update title
+    if self.TitleLabel then
+        self.TitleLabel.Text = gameData.Name
+        self.TitleLabel.TextColor3 = gameData.Color
+    end
+    
+    if self.DetectedLabel then
+        self.DetectedLabel.Text = "SELECTED: " .. gameData.Name
+        self.DetectedLabel.TextColor3 = gameData.Color
+    end
+    
+    self:_setStatus("Selected: " .. gameData.Name, gameData.Color)
+    
+    -- Callback
+    self.OnGameSelected(gameKey)
+end
+
+-- ─── PUBLIC METHODS ───
+
+function GameSelector:GetCurrentGame()
+    return self.CurrentGame, GAMES[self.CurrentGame]
+end
+
+function GameSelector:GetSelectedGame()
+    return self.SelectedGame, GAMES[self.SelectedGame]
+end
+
+function GameSelector:SetStatus(message, color)
+    self:_setStatus(message, color)
+end
+
+function GameSelector:Destroy()
+    if self.Main then
+        self.Main:Destroy()
+    end
+end
+
+-- ─── RETURN ───
+return GameSelector
